@@ -1,0 +1,113 @@
+diff -ur gbh_stream/gbh_stream.cpp gbh_stream_mod/gbh_stream.cpp
+--- gbh_stream/gbh_stream.cpp	2013-12-18 00:38:35.000000000 +0900
++++ gbh_stream_mod/gbh_stream.cpp	2014-08-12 22:50:06.000000000 +0900
+@@ -32,7 +32,7 @@
+ #include "disjoint-set.h"
+ 
+ int main(int argc, char** argv) {
+-	if (argc != 10) {
++	if (argc != 11) {
+ 		printf("%s c c_reg min sigma range hie_num out_col input output\n", argv[0]);
+ 		printf("       c --> value for the threshold function in over-segmentation\n");
+ 		printf("   c_reg --> value for the threshold function in hierarchical region segmentation\n");
+@@ -40,6 +40,7 @@
+ 		printf("   sigma --> variance of the Gaussian smoothing.\n");
+ 		printf("   range --> number of frames as one subsequence (k in the paper)\n");
+ 		printf(" hie_num --> desired number of hierarchy levels\n");
++		printf(" hie_step--> number of hierarchy levels to be skipped\n");
+ 		printf(" out_col --> 0:random colors  1:incremental/unique colors\n");
+ 		printf("   input --> input path of ppm video frames\n");
+ 		printf("  output --> output path of segmentation results\n");
+@@ -53,9 +54,10 @@
+ 	float sigma = atof(argv[4]);
+ 	int range = atoi(argv[5]);
+ 	int hie_num = atoi(argv[6]);
+-	int out_col = atoi(argv[7]);
+-	char* input_path = argv[8];
+-	char* output_path = argv[9];
++	int hie_step = atoi(argv[7]);
++	int out_col = atoi(argv[8]);
++	char* input_path = argv[9];
++	char* output_path = argv[10];
+ 	if (c <= 0 || c_reg <= 0 || min_size < 0 || sigma < 0 || hie_num < 0 || (out_col!=0 && out_col!=1)) {
+ 		fprintf(stderr, "Uable to use the input parameters.");
+ 		return 1;
+@@ -98,7 +100,9 @@
+ 			status = -1;
+ 		}
+ 	}
+-	for (int i = 0; i <= hie_num; i++) {
++	// Modified by Yonetani 140812
++	// for (int i = 0; i <= hie_num; i++) {
++	for (int i = 0; i <= hie_num; i+=hie_step) {
+   		snprintf(savepath,1023,"%s/%02d",output_path,i);
+ 		if (stat(savepath, &st) != 0) {
+ 			/* Directory does not exist */
+@@ -137,7 +141,7 @@
+ 	}
+ 	// frame index starts from 0
+ 	u[0] = segment_image(output_path, input_first, 0, range - 1, c, c_reg, min_size,
+-			sigma, hie_num, NULL, color_counter);
++			sigma, hie_num, hie_step, NULL, color_counter);
+ 	for (int j = 0; j < range; j++) {
+ 		delete input_first[j];
+ 	}
+@@ -151,7 +155,7 @@
+ 			printf("load --> %s\n", filepath);
+ 		}
+ 		u[i] = segment_image(output_path, input_middle, i * range - 1,
+-				i * range + range - 1, c, c_reg, min_size, sigma, hie_num,
++				i * range + range - 1, c, c_reg, min_size, sigma, hie_num, hie_step,
+ 				u[i - 1], color_counter);
+ 		delete u[i - 1];
+ 		for (int j = 0; j < range + 1; j++) {
+@@ -169,7 +173,7 @@
+ 		}
+ 		u[num_clip] = segment_image(output_path, input_last, num_clip * range - 1,
+ 				num_clip * range + last_clip - 1, c, c_reg, min_size, sigma,
+-				hie_num, u[num_clip - 1], color_counter);
++				hie_num, hie_step, u[num_clip - 1], color_counter);
+ 		delete u[num_clip - 1];
+ 		delete u[num_clip];
+ 		for (int j = 0; j < last_clip + 1; j++) {
+diff -ur gbh_stream/segment-image.h gbh_stream_mod/segment-image.h
+--- gbh_stream/segment-image.h	2014-08-12 21:55:14.000000000 +0900
++++ gbh_stream_mod/segment-image.h	2014-08-12 22:48:18.000000000 +0900
+@@ -105,7 +105,7 @@
+ /* Save Output */
+ void generate_output(bool first, char *path, int frame_id_start,
+ 		int frame_id_end, int width, int height, universe *mess,
+-		int num_vertices, int num_vertices_v, int level_total,
++		int num_vertices, int num_vertices_v, int level_total, int hie_step,
+ 		int color_counter[]) {
+ 
+ 	int num_save = frame_id_end - frame_id_start;
+@@ -128,8 +128,9 @@
+ 	blank.r = blank.g = blank.b = 0;
+ 
+ 	// write out the ppm files.
++	// modified by Yonetani 140812
+ 	// for (int k = 0; k <= level_total; k++) {
+-	for (int k = 0; k <= level_total; k+=4) { // modified by yonetani 140812
++	for (int k = 0; k <= level_total; k+=hie_step) {
+ 		for (int i = 0; i < num_save; i++) {
+ 			// add frame index 1 to save
+ 			snprintf(savepath, 1023, "%s/%02d/%05d.ppm", path, k, save_start + i);
+@@ -179,7 +180,7 @@
+ /* main operation steps in one iteration */
+ universe *segment_image(char *path, image<rgb> *im[], int frame_id_start,
+ 		int frame_id_end, float c, float c_reg, int min_size, float sigma,
+-		int hie_num, universe *v, int color_counter[]) {
++		int hie_num, int hie_step, universe *v, int color_counter[]) {
+ 
+ 	// step 1 -- Get information
+ 	// ----- width, heigh, frame number
+@@ -292,7 +293,7 @@
+ 	// step 8 -- generate output
+ 	printf("start output\n");
+ 	generate_output(first, path, frame_id_start, frame_id_end, width, height,
+-			mess, num_vertices, num_vertices_v, hie_num, color_counter);
++			mess, num_vertices, num_vertices_v, hie_num, hie_step, color_counter);
+ 	printf("end output\n");
+ 	// ------------------------------------------------------------------
+ 
