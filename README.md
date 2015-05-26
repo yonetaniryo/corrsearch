@@ -13,7 +13,8 @@ Ryo Yonetani, Kris M. Kitani and Yoichi Sato: "Ego-Surfing First-Person Videos",
 - [LIBSVX](http://www.cse.buffalo.edu/~jcorso/r/supervoxels/)
 
 ## How to run the code
-- First of all see an example on [IPython notebook page](https://github.com/yonetaniryo/corrsearch/blob/master/ipython_notebook/example.ipynb).
+- Download [example dataset](http://www.hci.iis.u-tokyo.ac.jp/datasets/data/EgoSurf/example.tar.gz)
+- See an example on [IPython notebook page](https://github.com/yonetaniryo/corrsearch/blob/master/ipython_notebook/example.ipynb).
 You could also run the example by executing ```ipython notebook``` on ```ipython_notebook``` directory.
 - This project currently includes the only target localization function. Please ask us if you need the program to train a generic targetness (e.g., when training on videos at different resolutions is needed). 
 
