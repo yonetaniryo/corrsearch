@@ -1,7 +1,7 @@
 # CorrSearch Software
 
 ## Description (May 26 2015)
-This software implements a target-search for first-person point-of-view videos. Please visit [our project page](http://yonetaniryo.github.io/corrsearch/) for more detail.
+This software implements a target-search for first-person point-of-view videos. Visit [our project page](http://yonetaniryo.github.io/corrsearch/) for more detail.
 
 
 ## References
