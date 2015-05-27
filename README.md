@@ -14,4 +14,4 @@ Ryo Yonetani, Kris M. Kitani and Yoichi Sato: "Ego-Surfing First-Person Videos",
 
 ### How to run this software
 - See an example on [IPython notebook page](https://github.com/yonetaniryo/corrsearch/blob/master/ipython_notebook/example.ipynb) or execute  ```ipython notebook``` on ```ipython_notebook``` directory.
-- This project currently includes the only target localization function. Please ask us if you need the program to train a generic targetness (e.g., when training on videos at different resolutions is needed).
+- This project currently assumes to use our pretrained model for generic targetness. Please ask us if you need the code to train your own model (e.g., when training on videos at different resolutions is needed).
