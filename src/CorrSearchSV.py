@@ -12,6 +12,10 @@ from skimage.measure import label as bwlabel
 
 
 def grabcut(img, targetness):
+    u"""
+    Segmenting the best target-like region from an targetness map.
+    """
+
     mask = np.ones(img.shape[:2], np.uint8) * cv2.GC_BGD
     score_th = scoreatpercentile(targetness, 95)
     mask[targetness >= score_th] = cv2.GC_PR_FGD
@@ -48,6 +52,9 @@ def nanmean(mat, axis=1):
 
 
 class CSBASE():
+    u"""
+    Base class of CorrSearch
+    """
 
     def __init__(self, mode, imgsize, interval, step, gstep, nframes, ext):
         self.mode = mode
@@ -59,6 +66,11 @@ class CSBASE():
         self.ext = ext
 
     def localize_target(self, tardir, obsdir, svdir, clsf, scaler):
+        u"""
+        Pipeline function to localize target instances in an observer video.
+        Output (fullmap) is a targetness map in the form of [N x M x T] numpy
+        array where T = self.nframes / self.gstep.
+        """
 
         nframes = self.nframes
         gstep = self.gstep
@@ -66,16 +78,18 @@ class CSBASE():
 
         score_h = self.calc_correlation(tardir, obsdir, svdir)
         svfiles = [sorted(glob.glob('%s/*%s' % (x, ext))) for x in svdir]
-        sv_h = [self.load_supervoxel(x[0:nframes:gstep]) for x in svfiles]
+        sv_h = [self.__load_supervoxel(x[0:nframes:gstep]) for x in svfiles]
 
-        scmap_h, feat_h = self.extract_feat(sv_h, score_h)
+        scmap_h, feat_h = self.__extract_feat(sv_h, score_h)
 
-        fullmap, likmap, primap = self.estimate_targetness(scmap_h, feat_h,
-                                                           clsf, scaler)
+        fullmap = self.estimate_targetness(scmap_h, feat_h, clsf, scaler)
 
         return fullmap
 
     def calc_correlation(self, tardir, obsdir, svdir):
+        u"""
+        Evaluating correlation-based targetness.
+        """
 
         interval = self.interval
         step = self.step
@@ -106,7 +120,7 @@ class CSBASE():
             print "Matching motion...",
             for h in range(n_scales):
                 print 'scale #%d/%d...' % (h + 1, n_scales),
-                sv = self.load_supervoxel(svfiles[h][start:end:step])
+                sv = self.__load_supervoxel(svfiles[h][start:end:step])
                 score = self.__calc_zncc(sv, lseq, gseq)
                 score_h[h][seq] = score
 
@@ -115,23 +129,21 @@ class CSBASE():
         return score_h
 
     def estimate_targetness(self, scmap_h, feat_h, clsf, scaler):
+        u"""
+        Estimating data-driven generic targetness.
+        """
 
         n_scales = len(scmap_h)
         prior = [clsf.predict_proba(scaler.transform(feat_h[h])
                                     )[:, 1].reshape(scmap_h[h].shape)
                  for h in range(n_scales)]
-        primap = np.prod(np.concatenate([(prior[h])[..., np.newaxis]
-                                         for h in range(n_scales)], 3), 3)
-        likmap = np.prod(np.concatenate(
-            [self.__sigm(scmap_h[h])[..., np.newaxis]
-             for h in range(n_scales)], 3), 3)
         fullmap = np.prod(np.concatenate(
             [((prior[h]) * self.__sigm(scmap_h[h]))[..., np.newaxis]
              for h in range(n_scales)], 3), 3)
 
-        return fullmap, likmap, primap
+        return fullmap
 
-    def extract_feat(self, sv_h, score_h):
+    def __extract_feat(self, sv_h, score_h):
         scmap_h = []
         feat = []
         for h in range(len(sv_h)):
@@ -158,27 +170,10 @@ class CSBASE():
 
             scmap_h.append(scmap)
 
-            feat.append(np.vstack((lcov.flatten(),
-                                   size.flatten(),
-                                   length.flatten(),
-                                   lstd.flatten())).T)
+            feat.append(np.vstack((lcov.flatten(), size.flatten(),
+                                   length.flatten(), lstd.flatten())).T)
 
         return scmap_h, feat
-
-    def load_supervoxel(self, svfiles):
-
-        imgsize = self.imgsize
-        n_files = len(svfiles)
-        sv = [[] for t in range(n_files)]
-        for t in range(n_files):
-            x = cv2.resize(cv2.imread(svfiles[t]).astype('float32'),
-                           (imgsize[0], imgsize[1]),
-                           interpolation=cv2.cv.CV_INTER_NN).astype('int')
-            sv[t] = x[:, :, 0] + x[:, :, 1] * 255 + x[:, :, 2] * 255 * 255
-
-        sv = np.dstack(sv)
-
-        return sv
 
     def __extract_motion_pattern(self, imgs):
 
@@ -206,13 +201,13 @@ class CSBASE():
         flow = (np.vstack((flow[:, :, 0].flatten(),
                            flow[:, :, 1].flatten())).T).astype('float32')
 
-        # remove irrelevant flows
+        # Removing irrelevant flows
         minEig = cv2.cornerMinEigenVal(img0_gray, blockSize=win * 3,
                                        borderType=cv2.BORDER_REPLICATE)
         loc0_of = loc0[minEig.flatten() > eig_th, :]
         loc1_of = flow[minEig.flatten() > eig_th, :] + loc0_of
 
-        # surf-based match
+        # Surf-based match
         loc0_sf, loc1_sf = self.__calc_surf(imgs)
         loc0_all = np.vstack((loc0_of, loc0_sf))
         loc1_all = np.vstack((loc1_of, loc1_sf))
@@ -223,8 +218,6 @@ class CSBASE():
         lm = flow - gm
         gm = gm[:, 0] * 1j + gm[:, 1]
         lm = lm[:, 0] * 1j + lm[:, 1]
-        # lm[minEig.flatten() < eig_th] /= 1e5
-        # lm[minEig.flatten() < eig_th] = np.nan # -> bad result
         lm[minEig.flatten() < eig_th] = 0
 
         return gm, lm
@@ -260,8 +253,6 @@ class CSBASE():
 
     def __calc_zncc(self, sv, lseq, gseq, LARGENUM=65536):
 
-        th = self.interval / 2
-
         gmean, lmean, size, length, lstd, id_list = \
             self.summarize_motion(sv, lseq, gseq)
 
@@ -277,10 +268,10 @@ class CSBASE():
         glcov = nanmean(np.multiply(g_, l_), axis=1)
         score = np.divide(glcov, np.sqrt(np.multiply(gcov, lcov))+1e-5).T
 
-        # remove small intervals
+        # Hack: ignoring small intervals
+        th = self.interval / 2
         score[np.sum(~np.isnan(leval), 1).flatten() < th] = 0
 
-        # store results
         score_all = np.zeros((LARGENUM, 6))
         score_all[id_list, 0] = np.array(score).flatten()
         score_all[id_list, 1] = np.array(gcov).flatten()
@@ -292,19 +283,30 @@ class CSBASE():
         return score_all
 
     def __load_img(self, imgfile):
-
-        imgsize = self.imgsize
-        img = cv2.imread(imgfile)
-        img = cv2.resize(img, (imgsize[0], imgsize[1]),
+        img = cv2.resize(cv2.imread(imgfile), tuple(self.imgsize),
                          interpolation=cv2.cv.CV_INTER_AREA)
-
         return img
+
+    def __load_supervoxel(self, svfiles):
+        sv = []
+        for t in range(len(svfiles)):
+            x = cv2.resize(cv2.imread(svfiles[t]).astype('float32'),
+                           tuple(self.imgsize),
+                           interpolation=cv2.cv.CV_INTER_NN).astype('int')
+            sv.append(x[:, :, 0] + x[:, :, 1] * 255 + x[:, :, 2] * 255 * 255)
+        sv = np.dstack(sv)
+
+        return sv
 
     def __sigm(self, x):
         return 1. / (1. + np.exp(-x))
 
 
 class CSPCA(CSBASE):
+    u"""
+    CorrSearch using a head-motion subspace cross correlation.
+    This is the proposed method.
+    """
 
     def summarize_motion(self, sv, lseq, gseq):
         lvol = [x.reshape((sv.shape[0], sv.shape[1])) for x in lseq]
@@ -323,7 +325,6 @@ class CSPCA(CSBASE):
         return gmean, lmean, size, length, lstd, id_list
 
     def __calc_gm(self, gseq, t_win=5):
-
         tmp = np.array([np.mean(x) for x in gseq])
         gmean = -1 * medfilt(tmp.real, t_win) + medfilt(tmp.imag, t_win) * 1j
         pca = PCA(n_components=1)
@@ -333,7 +334,6 @@ class CSPCA(CSBASE):
         return gmean, pca
 
     def __calc_lm(self, lseq, pca, t_win=5):
-
         for x in range(len(lseq)):
             if(len(lseq[x]) == 0):
                 lseq[x] = [np.nan]
@@ -354,6 +354,10 @@ class CSPCA(CSBASE):
 
 
 class CSABS(CSBASE):
+    u"""
+    Use this class if you wish to use an amplitude-based correlation instead of
+    a head-motion subspace cross correlation.
+    """
 
     def summarize_motion(self, sv, lseq, gseq):
         lvol = [x.reshape((sv.shape[0], sv.shape[1])) for x in lseq]
@@ -372,7 +376,6 @@ class CSABS(CSBASE):
         return gmean, lmean, size, length, lstd, id_list
 
     def __calc_gm(self, gseq, t_win=5):
-
         tmp = np.array([np.mean(x) for x in gseq])
         gmean = -1 * medfilt(tmp.real, t_win) + medfilt(tmp.imag, t_win) * 1j
         gmean = np.abs(gmean)
@@ -380,7 +383,6 @@ class CSABS(CSBASE):
         return gmean
 
     def __calc_lm(self, lseq, t_win=5):
-
         for x in range(len(lseq)):
             if(len(lseq[x]) == 0):
                 lseq[x] = [np.nan]
@@ -402,25 +404,23 @@ if(__name__ == '__main__'):
         description='Correlation-based self search')
     parser.add_argument('-p', '--params', nargs=1, type=file,
                         metavar='params.json',
-                        help='json svfiles containing various parameters.\
-                        run generating_commands.py in experiment directory \
-                        creates this svfiles.')
+                        help='json file describing various parameters.')
     parser.add_argument('-t', '--tardir', nargs=1, type=str,
                         metavar='---/ppm',
-                        help='directory containing ppm files of target video')
+                        help='directory of target video')
     parser.add_argument('-o', '--obsdir', nargs=1, type=str,
                         metavar='---/ppm',
-                        help='directory containing ppm files of observer video')
+                        help='directory of observer video')
     parser.add_argument('-s', '--svdir', nargs=1, type=str,
                         metavar='---/sv',
-                        help='directory containing subdirectories generated \
-                        by supervoxel program. Use LIBSVX.')
+                        help='directory containing the subdirectories generated \
+                        by gbh_stream.')
     parser.add_argument('-m', '--modelfile', nargs=1, type=str,
-                        metavar='cmu.npy',
+                        metavar='model.npy',
                         help='LDA and scaler to estimate generic targetness')
     parser.add_argument('-r', '--result', nargs=1, type=str,
                         metavar='result',
-                        help='directory containing result numpy data')
+                        help='numpy file to output a localization result')
 
     p = parser.parse_args(argvs)
     params = json.load(p.params[0])
